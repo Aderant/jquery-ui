@@ -32,6 +32,7 @@ $.widget( "ui.autocomplete", {
 			collision: "none"
 		},
 		source: null,
+		remoteSource: null,
 
 		// callbacks
 		change: null,
@@ -309,15 +310,21 @@ $.widget( "ui.autocomplete", {
 		if ( key === "appendTo" ) {
 			this.menu.element.appendTo( this.document.find( value || "body" )[0] );
 		}
-		if ( key === "disabled" && value && this.xhr ) {
-			this.xhr.abort();
+		if ( key === "disabled" && value ) {
+			if(this.xhr) {
+				this.xhr.abort();
+			}
+			if(this.remoteXhr) {
+				this.remoteXhr.abort();
+			}
 		}
 	},
 
 	_initSource: function() {
 		var that = this,
 			array,
-			url;
+			url,
+			remoteUrl;
 		if ( $.isArray(this.options.source) ) {
 			array = this.options.source;
 			this.source = function( request, response ) {
@@ -343,6 +350,28 @@ $.widget( "ui.autocomplete", {
 			};
 		} else {
 			this.source = this.options.source;
+		}
+		
+		if ( typeof this.options.remoteSource === "string" ) {
+			remoteUrl = this.options.remoteSource;
+			this.source = function( request, response ) {
+			if ( self.remoteXhr ) {
+				self.remoteXhr.abort();
+			}
+			self.remoteXhr = $.ajax({
+					url: remoteUrl,
+					data: request,
+					dataType: "json",
+					success: function( data ) {
+						response( data );
+					},
+					error: function() {
+						response( [] );
+					}
+				});
+			};
+		} else {
+			this.remoteSource = this.options.remoteSource;
 		}
 	},
 
@@ -379,12 +408,34 @@ $.widget( "ui.autocomplete", {
 		this.element.addClass( "ui-autocomplete-loading" );
 		this.cancelSearch = false;
 
-		this.source( { term: value }, this._response() );
+		this.source( { term: value }, this._firstResponse() );
+		if(this.remoteSource) {
+			this.remoteSource({ term: value }, this._secondResponse());
+		}
 	},
 
-	_response: function() {
+	_firstResponse: function() {
 		var that = this,
 			index = ++requestIndex;
+
+		return function( content ) {
+			if ( index === requestIndex ) {
+				that.__response( content );
+			}
+			
+			//Only decrement pending if there isn't an additional source to wait for.
+			if(!that.remoteSource) {
+				that.pending--;
+				if ( !that.pending ) {
+					that.element.removeClass( "ui-autocomplete-loading" );
+				}
+			}
+		};
+	},
+
+	_secondResponse: function() {
+		var that = this,
+			index = requestIndex;
 
 		return function( content ) {
 			if ( index === requestIndex ) {
