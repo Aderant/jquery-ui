@@ -6,6 +6,7 @@
  * http://jquery.org/license
  *
  * http://docs.jquery.com/UI
+ * changed by Pete....Yay!
  */
 (function( $, undefined ) {
 
